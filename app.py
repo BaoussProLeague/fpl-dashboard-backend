@@ -84,15 +84,48 @@ def entry_picks(manager_id: int, event_id: int):
     return jsonify(data)
 
 # -------- Config-first prize rule (highest GW points among top N) --------
-# Optional: future JSON-configurable rules
 PRIZE_RULES = json.loads(os.getenv("PRIZE_RULES_JSON", "[]"))
 
 @app.route("/api/prizes/<int:league_id>/gw/<int:event_id>")
 def compute_prizes(league_id: int, event_id: int):
-    # How many managers to consider from the top of the standings
     try:
         topN = int(os.getenv("PRIZE_TOP_N", "20"))
     except ValueError:
         topN = 20
 
-    # Use cached fetchers for consistency
+    league_data = fpl_get(f"/leagues-classic/{league_id}/standings/", ttl=60)
+    standings = league_data.get("standings", {}).get("results", [])
+
+    best = None
+    for row in standings[:topN]:
+        entry_id = row.get("entry")
+        if not entry_id:
+            continue
+        picks = fpl_get(f"/entry/{entry_id}/event/{event_id}/picks/", ttl=60)
+        gw_points = picks.get("entry_history", {}).get("points", 0)
+
+        if best is None or gw_points > best["points"]:
+            best = {
+                "entry": entry_id,
+                "entry_name": row.get("entry_name"),
+                "player_name": row.get("player_name"),
+                "points": gw_points,
+            }
+
+    return jsonify(
+        {
+            "league_id": league_id,
+            "event_id": event_id,
+            "topN": topN,
+            "highest_gw_points": best,
+        }
+    )
+
+# -------- Health check (optional) --------
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+if __name__ == "__main__":
+    # Local testing only; on Render, Gunicorn runs this app
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
