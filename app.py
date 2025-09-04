@@ -10,7 +10,7 @@ CORS(app)
 
 FPL_BASE = "https://fantasy.premierleague.com/api"
 
-# ---------- Simple in-memory cache ----------
+# --- Simple cache ---
 CACHE = {}
 
 def cache_get(key: str, ttl: int = 60):
@@ -26,10 +26,6 @@ def cache_set(key: str, data):
     CACHE[key] = (time.time(), data)
 
 def fpl_get(path: str, ttl: int = 60):
-    """
-    Fetch and cache responses from the official FPL API.
-    Example path: '/leagues-classic/{league_id}/standings/'
-    """
     key = f"FPL:{path}"
     data = cache_get(key, ttl)
     if 
@@ -40,7 +36,6 @@ def fpl_get(path: str, ttl: int = 60):
     cache_set(key, data)
     return data
 
-# ---------- Helpers ----------
 def load_json_env(var_name: str, default):
     raw = os.getenv(var_name, "")
     if not raw or not raw.strip():
@@ -56,14 +51,16 @@ def getenv_int(name: str, default: int) -> int:
     except Exception:
         return default
 
-# ---------- Core endpoints ----------
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
 @app.route("/api/league")
 def default_league():
     league_id = getenv_int("MAIN_LEAGUE_ID", 0)
     if not league_id:
         return jsonify({"error": "MAIN_LEAGUE_ID not set"}), 400
-    data = fpl_get(f"/leagues-classic/{league_id}/standings/", ttl=60)
-    return jsonify(data)
+    return jsonify(fpl_get(f"/leagues-classic/{league_id}/standings/", ttl=60))
 
 @app.route("/api/league/<int:league_id>/summary")
 def league_summary(league_id: int):
@@ -89,21 +86,15 @@ def league_summary(league_id: int):
 
 @app.route("/api/event/<int:event_id>/live")
 def event_live(event_id: int):
-    data = fpl_get(f"/event/{event_id}/live/", ttl=30)
-    return jsonify(data)
+    return jsonify(fpl_get(f"/event/{event_id}/live/", ttl=30))
 
 @app.route("/api/entry/<int:manager_id>/gw/<int:event_id>")
 def entry_picks(manager_id: int, event_id: int):
-    data = fpl_get(f"/entry/{manager_id}/event/{event_id}/picks/", ttl=60)
-    return jsonify(data)
-
-# ---------- Config-first prize rule ----------
-PRIZE_RULES = load_json_env("PRIZE_RULES_JSON", [])
+    return jsonify(fpl_get(f"/entry/{manager_id}/event/{event_id}/picks/", ttl=60))
 
 @app.route("/api/prizes/<int:league_id>/gw/<int:event_id>")
 def compute_prizes(league_id: int, event_id: int):
     topN = getenv_int("PRIZE_TOP_N", 20)
-
     league_data = fpl_get(f"/leagues-classic/{league_id}/standings/", ttl=60)
     standings = league_data.get("standings", {}).get("results", [])
 
@@ -114,7 +105,6 @@ def compute_prizes(league_id: int, event_id: int):
             continue
         picks = fpl_get(f"/entry/{entry_id}/event/{event_id}/picks/", ttl=60)
         gw_points = picks.get("entry_history", {}).get("points", 0)
-
         if best is None or gw_points > best["points"]:
             best = {
                 "entry": entry_id,
@@ -123,18 +113,14 @@ def compute_prizes(league_id: int, event_id: int):
                 "points": gw_points,
             }
 
+    rules = load_json_env("PRIZE_RULES_JSON", [])
     return jsonify({
         "league_id": league_id,
         "event_id": event_id,
         "topN": topN,
         "highest_gw_points": best,
-        "rules": PRIZE_RULES,
+        "rules": rules,
     })
-
-# ---------- Health check ----------
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
