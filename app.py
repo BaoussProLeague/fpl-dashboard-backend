@@ -32,7 +32,7 @@ def fpl_get(path: str, ttl: int = 60):
     """
     key = f"FPL:{path}"
     data = cache_get(key, ttl)
-    if data:
+    if:
         return data
     r = requests.get(f"{FPL_BASE}{path}", timeout=20)
     r.raise_for_status()
@@ -40,10 +40,29 @@ def fpl_get(path: str, ttl: int = 60):
     cache_set(key, data)
     return data
 
+# ---------- Helpers ----------
+def load_json_env(var_name: str, default):
+    """
+    Safely load a JSON env var. Returns default on empty, missing, or invalid JSON.
+    """
+    raw = os.getenv(var_name, "")
+    if not raw or not raw.strip():
+        return default
+    try:
+        return json.loads(raw)
+    except Exception:
+        return default
+
+def getenv_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except Exception:
+        return default
+
 # ---------- Core endpoints ----------
 @app.route("/api/league")
 def default_league():
-    league_id = int(os.getenv("MAIN_LEAGUE_ID", "0"))
+    league_id = getenv_int("MAIN_LEAGUE_ID", 0)
     if not league_id:
         return jsonify({"error": "MAIN_LEAGUE_ID not set"}), 400
     data = fpl_get(f"/leagues-classic/{league_id}/standings/", ttl=60)
@@ -82,14 +101,11 @@ def entry_picks(manager_id: int, event_id: int):
     return jsonify(data)
 
 # ---------- Config-first prize rule (highest GW points among top N) ----------
-PRIZE_RULES = json.loads(os.getenv("PRIZE_RULES_JSON", "[]"))
+PRIZE_RULES = load_json_env("PRIZE_RULES_JSON", [])
 
 @app.route("/api/prizes/<int:league_id>/gw/<int:event_id>")
 def compute_prizes(league_id: int, event_id: int):
-    try:
-        topN = int(os.getenv("PRIZE_TOP_N", "20"))
-    except ValueError:
-        topN = 20
+    topN = getenv_int("PRIZE_TOP_N", 20)
 
     league_data = fpl_get(f"/leagues-classic/{league_id}/standings/", ttl=60)
     standings = league_data.get("standings", {}).get("results", [])
@@ -115,6 +131,7 @@ def compute_prizes(league_id: int, event_id: int):
         "event_id": event_id,
         "topN": topN,
         "highest_gw_points": best,
+        "rules": PRIZE_RULES,  # just echo for visibility
     })
 
 # ---------- Health check ----------
