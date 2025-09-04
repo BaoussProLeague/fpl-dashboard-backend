@@ -32,7 +32,7 @@ def fpl_get(path: str, ttl: int = 60):
     """
     key = f"FPL:{path}"
     data = cache_get(key, ttl)
-    if 
+    if data:
         return data
     r = requests.get(f"{FPL_BASE}{path}", timeout=20)
     r.raise_for_status()
