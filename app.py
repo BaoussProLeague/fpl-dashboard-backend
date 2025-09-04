@@ -65,8 +65,7 @@ def entry_picks(manager_id: int, event_id: int):
 
 import os, json
 
-# Optional: a JSON array to hold future rule configs
-PRIZE_RULES = json.loads(os.getenv("PRIZE_RULES_JSON", "[]"))
+
 
 @app.route("/api/prizes/<int:league_id>/gw/<int:event_id>")
 def compute_prizes(league_id: int, event_id: int):
