@@ -32,7 +32,7 @@ def fpl_get(path: str, ttl: int = 60):
     """
     key = f"FPL:{path}"
     data = cache_get(key, ttl)
-    if:
+    if 
         return data
     r = requests.get(f"{FPL_BASE}{path}", timeout=20)
     r.raise_for_status()
@@ -42,9 +42,6 @@ def fpl_get(path: str, ttl: int = 60):
 
 # ---------- Helpers ----------
 def load_json_env(var_name: str, default):
-    """
-    Safely load a JSON env var. Returns default on empty, missing, or invalid JSON.
-    """
     raw = os.getenv(var_name, "")
     if not raw or not raw.strip():
         return default
@@ -100,7 +97,7 @@ def entry_picks(manager_id: int, event_id: int):
     data = fpl_get(f"/entry/{manager_id}/event/{event_id}/picks/", ttl=60)
     return jsonify(data)
 
-# ---------- Config-first prize rule (highest GW points among top N) ----------
+# ---------- Config-first prize rule ----------
 PRIZE_RULES = load_json_env("PRIZE_RULES_JSON", [])
 
 @app.route("/api/prizes/<int:league_id>/gw/<int:event_id>")
@@ -131,7 +128,7 @@ def compute_prizes(league_id: int, event_id: int):
         "event_id": event_id,
         "topN": topN,
         "highest_gw_points": best,
-        "rules": PRIZE_RULES,  # just echo for visibility
+        "rules": PRIZE_RULES,
     })
 
 # ---------- Health check ----------
@@ -140,5 +137,4 @@ def health():
     return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
-    # Local testing only; on Render use Gunicorn
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
