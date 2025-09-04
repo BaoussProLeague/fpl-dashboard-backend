@@ -62,3 +62,48 @@ def event_live(event_id: int):
 @app.route("/api/entry/<int:manager_id>/gw/<int:event_id>")
 def entry_picks(manager_id: int, event_id: int):
     return jsonify(fpl_get(f"/entry/{manager_id}/event/{event_id}/picks/", ttl=60))
+
+import os, json
+
+# Optional: a JSON array to hold future rule configs
+PRIZE_RULES = json.loads(os.getenv("PRIZE_RULES_JSON", "[]"))
+
+@app.route("/api/prizes/<int:league_id>/gw/<int:event_id>")
+def compute_prizes(league_id: int, event_id: int):
+    try:
+        topN = int(os.getenv("PRIZE_TOP_N", "20"))
+    except ValueError:
+        topN = 20
+
+    # Get league standings (reuse your cached fetch helper if you have one)
+    league_data = requests.get(
+        f"https://fantasy.premierleague.com/api/leagues-classic/{league_id}/standings/",
+        timeout=20
+    ).json()
+    standings = league_data.get("standings", {}).get("results", [])
+
+    best = None
+    for row in standings[:topN]:
+        entry_id = row.get("entry")
+        # Picks + entry_history include GW points
+        picks = requests.get(
+            f"https://fantasy.premierleague.com/api/entry/{entry_id}/event/{event_id}/picks/",
+            timeout=20
+        ).json()
+        gw_points = picks.get("entry_history", {}).get("points", 0)
+
+        if best is None or gw_points > best["points"]:
+            best = {
+                "entry": entry_id,
+                "entry_name": row.get("entry_name"),
+                "player_name": row.get("player_name"),
+                "points": gw_points
+            }
+
+    return jsonify({
+        "league_id": league_id,
+        "event_id": event_id,
+        "topN": topN,
+        "highest_gw_points": best
+    })
+
